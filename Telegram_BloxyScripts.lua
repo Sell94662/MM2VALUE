@@ -1,5 +1,3 @@
-
-
 local RAW_JSON_URL =
     "https://raw.githubusercontent.com/Sell94662/value/main/values.json"
 
@@ -28,11 +26,7 @@ local PROFIT_COLOR =
 local LOSS_COLOR =
     "FF5555"
 
-
--- VALUE под YOUR OFFER / THEIR OFFER
 local VALUE_OFFSET_Y = 8
-
--- YOU / THEM / PROFIT под DECLINE
 local SUMMARY_OFFSET_Y = 20
 
 
@@ -41,7 +35,9 @@ local SUMMARY_OFFSET_Y = 20
 -- ==============================================================================
 
 local ValuesDatabase = {}
+
 local DatabaseLoaded = false
+local DatabaseLoadFinished = false
 
 
 local function Normalize(text)
@@ -62,50 +58,202 @@ end
 
 
 -- ==============================================================================
+-- UNIVERSAL HTTP
+-- ==============================================================================
+
+local function GetRequestFunction()
+
+    -- syn.request
+    local ok, fn = pcall(function()
+        return syn and syn.request
+    end)
+
+    if ok and type(fn) == "function" then
+        return fn
+    end
+
+
+    -- http.request
+    ok, fn = pcall(function()
+        return http and http.request
+    end)
+
+    if ok and type(fn) == "function" then
+        return fn
+    end
+
+
+    -- http_request
+    ok, fn = pcall(function()
+        return http_request
+    end)
+
+    if ok and type(fn) == "function" then
+        return fn
+    end
+
+
+    -- request
+    ok, fn = pcall(function()
+        return request
+    end)
+
+    if ok and type(fn) == "function" then
+        return fn
+    end
+
+
+    return nil
+
+end
+
+
+local function DownloadDatabase()
+
+    ------------------------------------------------------------------
+    -- METHOD 1: game:HttpGet
+    ------------------------------------------------------------------
+
+    local success, response =
+        pcall(function()
+
+            return game:HttpGet(
+                RAW_JSON_URL
+            )
+
+        end)
+
+
+    if success
+        and type(response) == "string"
+        and #response > 0
+    then
+
+        return response
+
+    end
+
+
+    ------------------------------------------------------------------
+    -- METHOD 2: executor request API
+    ------------------------------------------------------------------
+
+    local requestFunction =
+        GetRequestFunction()
+
+
+    if not requestFunction then
+        return nil
+    end
+
+
+    local ok, result =
+        pcall(function()
+
+            return requestFunction({
+
+                Url = RAW_JSON_URL,
+
+                Method = "GET"
+
+            })
+
+        end)
+
+
+    if not ok
+        or not result
+    then
+
+        return nil
+
+    end
+
+
+    if type(result) == "table" then
+
+        return result.Body
+            or result.body
+
+    end
+
+
+    if type(result) == "string" then
+
+        return result
+
+    end
+
+
+    return nil
+
+end
+
+
+-- ==============================================================================
 -- LOAD GITHUB DATABASE
 -- ==============================================================================
 
 task.spawn(function()
 
-    local success, response = pcall(function()
-
-        return game:HttpGet(
-            RAW_JSON_URL
-        )
-
-    end)
+    local response =
+        DownloadDatabase()
 
 
-    if not success or not response then
+    ------------------------------------------------------------------
+    -- HTTP недоступен
+    --
+    -- ВАЖНО:
+    -- НЕ блокируем запуск всего скрипта.
+    ------------------------------------------------------------------
+
+    if not response then
 
         warn(
             "[Telegram @BloxyScripts] GitHub download failed"
         )
 
+        DatabaseLoaded = false
+        DatabaseLoadFinished = true
+
         return
 
     end
 
 
-    local ok, data = pcall(function()
+    ------------------------------------------------------------------
+    -- JSON
+    ------------------------------------------------------------------
 
-        return HttpService:JSONDecode(
-            response
-        )
+    local ok, data =
+        pcall(function()
 
-    end)
+            return HttpService:JSONDecode(
+                response
+            )
+
+        end)
 
 
-    if not ok or type(data) ~= "table" then
+    if not ok
+        or type(data) ~= "table"
+    then
 
         warn(
             "[Telegram @BloxyScripts] JSON decode failed"
         )
 
+        DatabaseLoaded = false
+        DatabaseLoadFinished = true
+
         return
 
     end
 
+
+    ------------------------------------------------------------------
+    -- LOAD VALUES
+    ------------------------------------------------------------------
 
     local count = 0
 
@@ -134,6 +282,7 @@ task.spawn(function()
 
 
     DatabaseLoaded = true
+    DatabaseLoadFinished = true
 
 
     print(
@@ -144,14 +293,18 @@ task.spawn(function()
 
     pcall(function()
 
-        game:GetService("StarterGui"):SetCore(
+        game:GetService(
+            "StarterGui"
+        ):SetCore(
             "SendNotification",
             {
                 Title = "Telegram @BloxyScripts",
+
                 Text =
                     "База загружена: "
                     .. count
                     .. " предметов",
+
                 Duration = 4
             }
         )
@@ -163,9 +316,6 @@ end)
 
 -- ==============================================================================
 -- GET VALUE
---
--- Есть в GitHub -> реальное значение
--- Нет в GitHub -> 0
 -- ==============================================================================
 
 local function GetItemValue(name)
@@ -186,7 +336,6 @@ local function GetItemValue(name)
     end
 
 
-    -- НОВЫЙ ПРЕДМЕТ НЕ НАЙДЕН В БАЗЕ
     return 0
 
 end
@@ -467,7 +616,6 @@ local function ApplyItemBadge(
     end
 
 
-    -- Показываем даже 0
     badge.Text =
         tostring(value)
 
@@ -543,8 +691,6 @@ end
 
 -- ==============================================================================
 -- SERVICE TEXT
---
--- Эти надписи НЕ считаются предметами.
 -- ==============================================================================
 
 local function IsServiceText(text)
@@ -601,7 +747,6 @@ local function IsServiceText(text)
     end
 
 
-    -- Только числа тоже не предмет
     if t:match("^%d+$") then
         return true
     end
@@ -653,10 +798,7 @@ local function FindTradeUI()
                     then
 
                         if IsVisible(obj) then
-
-                            your =
-                                obj
-
+                            your = obj
                         end
 
 
@@ -665,10 +807,7 @@ local function FindTradeUI()
                     then
 
                         if IsVisible(obj) then
-
-                            their =
-                                obj
-
+                            their = obj
                         end
 
 
@@ -677,10 +816,7 @@ local function FindTradeUI()
                     then
 
                         if IsVisible(obj) then
-
-                            decline =
-                                obj
-
+                            decline = obj
                         end
 
                     end
@@ -740,9 +876,7 @@ local function FindCommonParent(
     while current do
 
         if parents[current] then
-
             return current
-
         end
 
 
@@ -863,16 +997,6 @@ end
 
 -- ==============================================================================
 -- SCAN SIDE
---
--- ВАЖНО:
---
--- Если предмет есть в GitHub:
---     например Sands = 5
---
--- Если предмета НЕТ:
---     Sands = 0
---
--- В обоих случаях предмет отображается.
 -- ==============================================================================
 
 local function ScanSide(
@@ -906,20 +1030,12 @@ local function ScanSide(
 
         if IsPossibleItemText(obj) then
 
-            --------------------------------------------------
-            -- СНАЧАЛА НАХОДИМ СЛОТ
-            --------------------------------------------------
-
             local slot =
                 FindSlot(
                     obj,
                     sideRoot
                 )
 
-
-            --------------------------------------------------
-            -- ЕСЛИ ЭТО РЕАЛЬНЫЙ СЛОТ
-            --------------------------------------------------
 
             if slot
                 and not foundSlots[slot]
@@ -929,32 +1045,15 @@ local function ScanSide(
                     true
 
 
-                --------------------------------------------------
-                -- ПОЛУЧАЕМ VALUE
-                --
-                -- Есть в GitHub -> значение
-                -- Нет в GitHub -> 0
-                --------------------------------------------------
-
                 local value =
                     GetItemValue(
                         obj.Text
                     )
 
 
-                --------------------------------------------------
-                -- ДОБАВЛЯЕМ В СУММУ
-                --------------------------------------------------
-
                 total +=
                     value
 
-
-                --------------------------------------------------
-                -- ПОКАЗЫВАЕМ VALUE
-                --
-                -- Даже если value == 0
-                --------------------------------------------------
 
                 ApplyItemBadge(
                     slot,
@@ -1102,15 +1201,11 @@ local function DrawSummary(
 
 
     if diff >= 0 then
-
         diffText =
             "+" .. diff
-
     else
-
         diffText =
             tostring(diff)
-
     end
 
 
@@ -1118,15 +1213,11 @@ local function DrawSummary(
 
 
     if pct >= 0 then
-
         pctText =
             "+" .. pct .. "%"
-
     else
-
         pctText =
             tostring(pct) .. "%"
-
     end
 
 
@@ -1216,16 +1307,15 @@ end
 
 task.spawn(function()
 
+    ------------------------------------------------------------------
+    -- НЕ ЖДЁМ DatabaseLoaded
+    --
+    -- Это главное исправление.
+    --
+    -- Если HTTP не работает, GUI всё равно запускается.
+    ------------------------------------------------------------------
 
-    --------------------------------------------------
-    -- ЖДЁМ GITHUB БАЗУ
-    --------------------------------------------------
-
-    while not DatabaseLoaded do
-
-        task.wait(0.1)
-
-    end
+    task.wait(0.1)
 
 
     while true do
@@ -1238,17 +1328,8 @@ task.spawn(function()
         local success =
             pcall(function()
 
-
-                --------------------------------------------------
-                -- ПОЛНЫЙ RESET
-                --------------------------------------------------
-
                 HideOverlay()
 
-
-                --------------------------------------------------
-                -- ИЩЕМ ТРЕЙД
-                --------------------------------------------------
 
                 local yourHeader,
                     theirHeader,
@@ -1256,10 +1337,6 @@ task.spawn(function()
 
                     FindTradeUI()
 
-
-                --------------------------------------------------
-                -- ТРЕЙДА НЕТ
-                --------------------------------------------------
 
                 if not yourHeader
                     or not theirHeader
@@ -1271,10 +1348,6 @@ task.spawn(function()
 
                 end
 
-
-                --------------------------------------------------
-                -- ОБЩИЙ ROOT
-                --------------------------------------------------
 
                 local tradeRoot =
                     FindCommonParent(
@@ -1292,23 +1365,11 @@ task.spawn(function()
                 end
 
 
-                --------------------------------------------------
-                -- СЧИТАЕМ YOUR
-                --
-                -- Неизвестные предметы = 0
-                --------------------------------------------------
-
                 local yourTotal =
                     ScanSide(
                         yourHeader
                     )
 
-
-                --------------------------------------------------
-                -- СЧИТАЕМ THEIR
-                --
-                -- Неизвестные предметы = 0
-                --------------------------------------------------
 
                 local theirTotal =
                     ScanSide(
@@ -1316,62 +1377,32 @@ task.spawn(function()
                     )
 
 
-                --------------------------------------------------
-                -- YOUR VALUE
-                --------------------------------------------------
-
                 DrawValueLabel(
-
                     yourValueLbl,
-
                     yourHeader,
-
                     yourTotal
-
                 )
 
-
-                --------------------------------------------------
-                -- THEIR VALUE
-                --------------------------------------------------
 
                 DrawValueLabel(
-
                     theirValueLbl,
-
                     theirHeader,
-
                     theirTotal
-
                 )
 
-
-                --------------------------------------------------
-                -- SUMMARY
-                --------------------------------------------------
 
                 if declineBtn then
 
                     DrawSummary(
-
                         declineBtn,
-
                         yourTotal,
-
                         theirTotal
-
                     )
 
                 end
 
-
             end)
 
-
-        --------------------------------------------------
-        -- ЕСЛИ ОШИБКА:
-        -- ПОЛНОСТЬЮ ОЧИЩАЕМ UI
-        --------------------------------------------------
 
         if not success then
 
